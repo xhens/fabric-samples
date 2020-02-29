@@ -50,9 +50,9 @@ function printHelp() {
   echo "	network.sh up"
   echo
   echo " Examples:"
-  echo "  network.sh up createChannel -ca -c mychannel -s couchdb -i 1.4.0"
+  echo "  network.sh up createChannel -ca -c mychannel -s couchdb -i 2.0.0"
   echo "  network.sh createChannel -c channelName"
-  echo "  network.sh deployCC -l node"
+  echo "  network.sh deployCC -l javascript"
 }
 
 # Obtain CONTAINER_IDS and remove them
@@ -79,8 +79,8 @@ function removeUnwantedImages() {
   fi
 }
 
-# Versions of fabric known not to work with this release of first-network
-BLACKLISTED_VERSIONS="^1\.0\. ^1\.1\.0-preview ^1\.1\.0-alpha"
+# Versions of fabric known not to work with the test network
+BLACKLISTED_VERSIONS="^1\.0\. ^1\.1\. ^1\.2\. ^1\.3\. ^1\.4\."
 
 # Do some basic sanity checking to make sure that the appropriate versions of fabric
 # binaries/images are available. In the future, additional checking for the presence
@@ -114,13 +114,13 @@ function checkPrereqs() {
   for UNSUPPORTED_VERSION in $BLACKLISTED_VERSIONS; do
     echo "$LOCAL_VERSION" | grep -q $UNSUPPORTED_VERSION
     if [ $? -eq 0 ]; then
-      echo "ERROR! Local Fabric binary version of $LOCAL_VERSION does not match this newer version of the network and is unsupported. Either move to a later version of Fabric or checkout an earlier version of fabric-samples."
+      echo "ERROR! Local Fabric binary version of $LOCAL_VERSION does not match the versions supported by the test network."
       exit 1
     fi
 
     echo "$DOCKER_IMAGE_VERSION" | grep -q $UNSUPPORTED_VERSION
     if [ $? -eq 0 ]; then
-      echo "ERROR! Fabric Docker image version of $DOCKER_IMAGE_VERSION does not match this newer version of the network and is unsupported. Either move to a later version of Fabric or checkout an earlier version of fabric-samples."
+      echo "ERROR! Fabric Docker image version of $DOCKER_IMAGE_VERSION does not match the versions supported by the test network."
       exit 1
     fi
   done
@@ -350,8 +350,7 @@ function createChannel() {
 
 ## Bring up the network if it is not arleady up.
 
-  CONTAINER_IDS=$(docker ps -a | awk '($2 ~ /fabric-peer/) {print $1}')
-  if [ -z "$CONTAINER_IDS" -o "$CONTAINER_IDS" == " " ]; then
+  if [ ! -d "organizations/peerOrganizations" ]; then
     echo "Bringing up network"
     networkUp
   fi
@@ -370,14 +369,6 @@ function createChannel() {
 
 ## Call the script to isntall and instantiate a chaincode on the channel
 function deployCC() {
-
-  if [ "$CC_RUNTIME_LANGUAGE" = "go" -o "$CC_RUNTIME_LANGUAGE" = "golang" ]; then
-    echo Vendoring Go dependencies ...
-    pushd ../chaincode/fabcar/go
-    GO111MODULE=on go mod vendor
-    popd
-    echo Finished vendoring Go dependencies
-  fi
 
   scripts/deployCC.sh $CHANNEL_NAME $CC_RUNTIME_LANGUAGE $VERSION $CLI_DELAY $MAX_RETRY $VERBOSE
 
@@ -407,9 +398,12 @@ function networkDown() {
     # remove orderer block and other channel configuration transactions and certs
     rm -rf system-genesis-block/*.block organizations/peerOrganizations organizations/ordererOrganizations
     ## remove fabric ca artifacts
-    rm -rf organizations/fabric-ca/org1/msp organizations/fabric-ca/org1/tls-cert.pem organizations/fabric-ca/org1/ca-cert.pem organizations/fabric-ca/org1/issuerPublicKey organizations/fabric-ca/org1/issuerRevocationPublicKey organizations/fabric-ca/org1/fabric-ca-server.db
-    rm -rf organizations/fabric-ca/org2/msp organizations/fabric-ca/org2/tls-cert.pem organizations/fabric-ca/org2/ca-cert.pem organizations/fabric-ca/org2/issuerPublicKey organizations/fabric-ca/org2/issuerRevocationPublicKey organizations/fabric-ca/org2/fabric-ca-server.db
-    rm -rf organizations/fabric-ca/ordererOrg/msp organizations/fabric-ca/ordererOrg/tls-cert.pem organizations/fabric-ca/ordererOrg/ca-cert.pem organizations/fabric-ca/ordererOrg/issuerPublicKey organizations/fabric-ca/ordererOrg/issuerRevocationPublicKey organizations/fabric-ca/ordererOrg/fabric-ca-server.db
+    rm -rf organizations/fabric-ca/org1/msp organizations/fabric-ca/org1/tls-cert.pem organizations/fabric-ca/org1/ca-cert.pem organizations/fabric-ca/org1/IssuerPublicKey organizations/fabric-ca/org1/IssuerRevocationPublicKey organizations/fabric-ca/org1/fabric-ca-server.db
+    rm -rf organizations/fabric-ca/org2/msp organizations/fabric-ca/org2/tls-cert.pem organizations/fabric-ca/org2/ca-cert.pem organizations/fabric-ca/org2/IssuerPublicKey organizations/fabric-ca/org2/IssuerRevocationPublicKey organizations/fabric-ca/org2/fabric-ca-server.db
+    rm -rf organizations/fabric-ca/ordererOrg/msp organizations/fabric-ca/ordererOrg/tls-cert.pem organizations/fabric-ca/ordererOrg/ca-cert.pem organizations/fabric-ca/ordererOrg/IssuerPublicKey organizations/fabric-ca/ordererOrg/IssuerRevocationPublicKey organizations/fabric-ca/ordererOrg/fabric-ca-server.db
+    rm -rf addOrg3/fabric-ca/org3/msp addOrg3/fabric-ca/org3/tls-cert.pem addOrg3/fabric-ca/org3/ca-cert.pem addOrg3/fabric-ca/org3/IssuerPublicKey addOrg3/fabric-ca/org3/IssuerRevocationPublicKey addOrg3/fabric-ca/org3/fabric-ca-server.db
+
+
     # remove channel and script artifacts
     rm -rf channel-artifacts log.txt fabcar.tar.gz fabcar
 
@@ -443,8 +437,6 @@ COMPOSE_FILE_ORG3=addOrg3/docker/docker-compose-org3.yaml
 CC_RUNTIME_LANGUAGE=golang
 # Chaincode version
 VERSION=1
-# Chaincode source path
-CC_SRC_PATH="../chaincode/fabcar/go/"
 # default image tag
 IMAGETAG="latest"
 # default database
@@ -479,7 +471,6 @@ while [[ $# -ge 1 ]] ; do
     printHelp
     exit 0
     ;;
-
   -c )
     CHANNEL_NAME="$2"
     shift
