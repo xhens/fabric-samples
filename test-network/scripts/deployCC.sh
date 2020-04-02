@@ -1,21 +1,21 @@
 
 CHANNEL_NAME="$1"
-CC_RUNTIME_LANGUAGE="$2"
+CC_SRC_LANGUAGE="$2"
 VERSION="$3"
 DELAY="$4"
 MAX_RETRY="$5"
 VERBOSE="$6"
 : ${CHANNEL_NAME:="mychannel"}
-: ${CC_RUNTIME_LANGUAGE:="golang"}
+: ${CC_SRC_LANGUAGE:="golang"}
 : ${VERSION:="1"}
 : ${DELAY:="3"}
 : ${MAX_RETRY:="5"}
 : ${VERBOSE:="false"}
-CC_RUNTIME_LANGUAGE=`echo "$CC_RUNTIME_LANGUAGE" | tr [:upper:] [:lower:]`
+CC_SRC_LANGUAGE=`echo "$CC_SRC_LANGUAGE" | tr [:upper:] [:lower:]`
 
 FABRIC_CFG_PATH=$PWD/../config/
 
-if [ "$CC_RUNTIME_LANGUAGE" = "go" -o "$CC_RUNTIME_LANGUAGE" = "golang" ] ; then
+if [ "$CC_SRC_LANGUAGE" = "go" -o "$CC_SRC_LANGUAGE" = "golang" ] ; then
 	CC_RUNTIME_LANGUAGE=golang
 	CC_SRC_PATH="../chaincode/fabcar/go/"
 
@@ -25,11 +25,11 @@ if [ "$CC_RUNTIME_LANGUAGE" = "go" -o "$CC_RUNTIME_LANGUAGE" = "golang" ] ; then
 	popd
 	echo Finished vendoring Go dependencies
 
-elif [ "$CC_RUNTIME_LANGUAGE" = "javascript" ]; then
+elif [ "$CC_SRC_LANGUAGE" = "javascript" ]; then
 	CC_RUNTIME_LANGUAGE=node # chaincode runtime language is node.js
 	CC_SRC_PATH="../chaincode/fabcar/javascript/"
 
-elif [ "$CC_RUNTIME_LANGUAGE" = "java" ]; then
+elif [ "$CC_SRC_LANGUAGE" = "java" ]; then
 	CC_RUNTIME_LANGUAGE=java
 	CC_SRC_PATH="../chaincode/fabcar/java/build/install/fabcar"
 
@@ -39,9 +39,20 @@ elif [ "$CC_RUNTIME_LANGUAGE" = "java" ]; then
 	popd
 	echo Finished compiling Java code
 
+elif [ "$CC_SRC_LANGUAGE" = "typescript" ]; then
+	CC_RUNTIME_LANGUAGE=node # chaincode runtime language is node.js
+	CC_SRC_PATH="../chaincode/fabcar/typescript/"
+
+	echo Compiling TypeScript code into JavaScript ...
+	pushd ../chaincode/fabcar/typescript
+	npm install
+	npm run build
+	popd
+	echo Finished compiling TypeScript code into JavaScript
+
 else
-	echo The chaincode language ${CC_RUNTIME_LANGUAGE} is not supported by this script
-	echo Supported chaincode languages are: go, javascript, java
+	echo The chaincode language ${CC_SRC_LANGUAGE} is not supported by this script
+	echo Supported chaincode languages are: go, java, javascript, and typescript
 	exit 1
 fi
 
@@ -216,7 +227,7 @@ chaincodeInvokeInit() {
   # it using the "-o" option
   if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
     set -x
-    peer chaincode invoke -o localhost:7050 -C $CHANNEL_NAME -n fabcar $PEER_CONN_PARMS --isInit -c '{"function":"init","Args":[]}' >&log.txt
+    peer chaincode invoke -o localhost:7050 -C $CHANNEL_NAME -n fabcar $PEER_CONN_PARMS --isInit -c '{"function":"initLedger","Args":[]}' >&log.txt
     res=$?
     set +x
   else
@@ -225,31 +236,6 @@ chaincodeInvokeInit() {
     res=$?
     set +x
   fi
-  cat log.txt
-  verifyResult $res "Invoke execution on $PEERS failed "
-  echo "===================== Invoke transaction successful on $PEERS on channel '$CHANNEL_NAME' ===================== "
-  echo
-}
-
-chaincodeInvoke() {
-  parsePeerConnectionParameters $@
-  res=$?
-  verifyResult $res "Invoke transaction failed on channel '$CHANNEL_NAME' due to uneven number of peer and org parameters "
-
-  # while 'peer chaincode' command can get the orderer endpoint from the
-  # peer (if join was successful), let's supply it directly as we know
-  # it using the "-o" option
-  if [ -z "$CORE_PEER_TLS_ENABLED" -o "$CORE_PEER_TLS_ENABLED" = "false" ]; then
-    set -x
-    peer chaincode invoke -o localhost:7050 -C $CHANNEL_NAME -n fabcar $PEER_CONN_PARMS  -c '{"function":"initLedger","Args":[]}' >&log.txt
-    res=$?
-    set +x
-  else
-    set -x
-    peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n fabcar $PEER_CONN_PARMS -c '{"function":"initLedger","Args":[]}' >&log.txt
-    res=$?
-    set +x
-	fi
   cat log.txt
   verifyResult $res "Invoke execution on $PEERS failed "
   echo "===================== Invoke transaction successful on $PEERS on channel '$CHANNEL_NAME' ===================== "
@@ -325,9 +311,6 @@ queryCommitted 2
 chaincodeInvokeInit 1 2
 
 sleep 10
-
-## Invoke the chaincode
-chaincodeInvoke 1 2
 
 # Query chaincode on peer0.org1
 echo "Querying chaincode on peer0.org1..."
